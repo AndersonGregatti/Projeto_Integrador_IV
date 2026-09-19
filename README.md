@@ -10,7 +10,7 @@ Estudo de caso sobre abandono escolar na rede municipal de Cubatão-SP, combinan
 - **[📊 Data App — Painel Interativo (Streamlit)](https://appcubatao-t7e2jepdyhxnsahkq8vmj2.streamlit.app/)**
   Painel com 6 abas: Contexto Oficial (INEP), Censo Escolar, Frequência 2026, Machine Learning, Panorama Regional (Brasil → SP → Cubatão) e Mapa das Escolas.
 
-- **[📝 Registro de Frequência — Rede Municipal de Cubatão](./registro_frequencia_cubatao.html)**
+- **[📝 Registro de Frequência — Rede Municipal de Cubatão](https://testerepo-3uyzvcs4fr5e5iszdpliv7.streamlit.app/)**
   Protótipo web do sistema de chamada digital (baixe o arquivo e abra no navegador, ou visualize o código-fonte pelo link).
 
 ## Participantes
@@ -59,3 +59,8 @@ O projeto combina dados **reais** (Censo Escolar, Taxas de Rendimento do INEP, c
 - INEP — Taxas de Rendimento Escolar, 2024 e 2025
 - Realinho, V. et al. (2021). *Predict Students' Dropout and Academic Success*. UCI Machine Learning Repository. DOI: 10.24432/C5MC89
 - Dados Escola Municipal Cubatão - 7ª serie - 2026
+## ****************************************
+
+
+
+

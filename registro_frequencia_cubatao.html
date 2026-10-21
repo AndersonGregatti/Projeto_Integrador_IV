@@ -108,6 +108,16 @@
   .day-cell.dash { background: #F0EEE7; color: #B7B0A0; cursor: default; }
   .day-cell:hover:not(.dash) { outline: 2px solid var(--teal); outline-offset: -2px; }
 
+  .register-table th.we { background: #E2DDCE; color: #8A8472; }
+  .register-table th .dsem { display:block; font-size:9px; font-weight:400; opacity:.8; }
+  .register-table th.nome-dia { min-width:26px; }
+  .name-col.editavel { cursor: pointer; }
+  .name-col.editavel:hover { background: #F3F0E6; }
+  .name-col.travado { background: #F6F4EE; color: #3E4B47; }
+  .name-col .cadeado { cursor: pointer; user-select: none; padding: 0 2px; border-radius: 3px; }
+  .name-col .cadeado:hover { background: #E8E3D4; }
+  .name-col.editando { background: #FFF9E8; }
+  .name-col.editando input { font-family: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--teal); border-radius: 4px; width: 150px; margin-right: 4px; }
   .freq-col { font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
 
   .hint { font-size: 12px; color: #5B6A66; margin-top: 10px; }
@@ -178,9 +188,11 @@
     <div class="field">
       <label for="ano">Ano</label>
       <select id="ano" onchange="mudarAno()">
-        <option value="2024">2024</option>
-        <option value="2025">2025</option>
         <option value="2026" selected>2026</option>
+        <option value="2027">2027</option>
+        <option value="2028">2028</option>
+        <option value="2029">2029</option>
+        <option value="2030">2030</option>
       </select>
     </div>
     <div class="field" id="campo-mes">
@@ -248,7 +260,7 @@
         <span><i style="background:#F6E4E0"></i> Falta</span>
         <span><i style="background:#F0EEE7"></i> Sem aula / sem registro</span>
       </div>
-      <div class="hint">Chamada digitalizada disponível apenas para a Escola Municipal de Cubatão (fictícia), turno da manhã, maio a agosto de 2026. Escolas reais (2024/2025) mostram apenas o contexto oficial do Censo/INEP, na aba "Contexto da rede".</div>
+      <div class="hint">Clique em uma célula para alternar: vazio → P (presença) → F (falta) → vazio. Todos os meses de 2026 a 2030 estão liberados, com todos os dias do mês (fins de semana aparecem em cinza no cabeçalho). Maio a agosto de 2026 já vêm preenchidos com a chamada digitalizada. Turnos da manhã e da tarde disponíveis. Clique no nome do aluno para editá-lo; ao salvar, o nome fica travado (🔒). Para corrigir, clique duas vezes no cadeado. Tudo fica salvo neste navegador.</div>
     </div>
   </div>
 
@@ -348,6 +360,10 @@ const CONTEXTO_ANO = {
   '2024': { matriculas: 915, nota: 'Aprovação 91,7% · Reprovação 7,3% · Abandono 1,0% (rede, 7º ano)' },
   '2025': { matriculas: 919, nota: 'Aprovação 93,1% · Reprovação 5,4% · Abandono 1,5% (rede, 7º ano)' },
   '2026': { matriculas: null, nota: 'Ano em andamento — sem Taxas de Rendimento publicadas ainda' },
+  '2027': { matriculas: null, nota: 'Ano futuro — lançamento de chamada liberado, sem Taxas de Rendimento' },
+  '2028': { matriculas: null, nota: 'Ano futuro — lançamento de chamada liberado, sem Taxas de Rendimento' },
+  '2029': { matriculas: null, nota: 'Ano futuro — lançamento de chamada liberado, sem Taxas de Rendimento' },
+  '2030': { matriculas: null, nota: 'Ano futuro — lançamento de chamada liberado, sem Taxas de Rendimento' },
 };
 
 function escolaMudou() {
@@ -359,7 +375,7 @@ function atualizarOpcoesEscola() {
   const ano = document.getElementById('ano').value;
   const anoAnterior = escolaSelect.value; // nome selecionado antes de repopular (se ainda existir)
   escolaSelect.innerHTML = '';
-  const listaFiltrada = ano === '2026' ? escolas.filter(e => e.ficticia) : escolas.filter(e => !e.ficticia);
+  const listaFiltrada = escolas; // fictícia primeiro; todas disponíveis em qualquer ano
   listaFiltrada.forEach(e => {
     const opt = document.createElement('option');
     opt.textContent = e.nome;
@@ -385,7 +401,7 @@ function atualizarContexto() {
 function temChamadaDigital() {
   const ano = document.getElementById('ano').value;
   const turno = document.getElementById('turno').value;
-  return escolaAtualEhFicticia() && ano === '2026' && turno === 'manha';
+  return escolaAtualEhFicticia(); // manhã e tarde liberados
 }
 
 // ---------- Série -> turmas, e qual série é fictícia ----------
@@ -428,26 +444,110 @@ let freqMesAnterior = {}; // { aluno: freq% do mês anterior, para tendência }
 let diasDoMes = [];
 
 const ORDEM_MESES = ['JANEIRO','FEVEREIRO','MARCO','ABRIL','MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO'];
-const MESES_COM_DADOS_REAIS = ['MAIO', 'JUNHO', 'JULHO', 'AGOSTO']; // único período com chamada digitalizada em 2026
+const NOMES_MES = { JANEIRO:'Janeiro', FEVEREIRO:'Fevereiro', MARCO:'Março', ABRIL:'Abril', MAIO:'Maio', JUNHO:'Junho', JULHO:'Julho', AGOSTO:'Agosto', SETEMBRO:'Setembro', OUTUBRO:'Outubro', NOVEMBRO:'Novembro', DEZEMBRO:'Dezembro' };
+const SIGLA_DIA = ['D','S','T','Q','Q','S','S'];
 
-function extrairDiaMes(dataISO) {
-  const [ano, mes, dia] = dataISO.split('-').map(Number);
-  return dia;
+// Lançamentos feitos pelo usuário: { "2026|7°A|9": { aluno: { dia: 'P'|'F'|'-' } } }  ('-' = apagado)
+let edicoes = {};
+try { edicoes = JSON.parse(localStorage.getItem('rf_edicoes_v1') || '{}'); } catch (e) { edicoes = {}; }
+function salvarEdicoes() { try { localStorage.setItem('rf_edicoes_v1', JSON.stringify(edicoes)); } catch (e) {} }
+
+function diasNoMes(ano, mesNum) { return new Date(Number(ano), mesNum, 0).getDate(); } // mesNum 1-12
+
+function turnoAtual() { return document.getElementById('turno').value; }
+function nomeTurno(turno) { return turno === 'tarde' ? 'Tarde' : 'Manhã'; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Chave dos lançamentos: manhã mantém o formato antigo (preserva o que já foi lançado); tarde tem prefixo próprio
+function chaveEdicao(ano, turno, turma, mesNum) {
+  const base = `${ano}|${turma}|${mesNum}`;
+  return turno === 'tarde' ? `tarde|${base}` : base;
 }
 
-function carregarTurma(ano, turmaChave, mes) {
-  // Dados reais ou fictícios (6º ano é fictício) — mesma estrutura para ambos
+// Nomes dos alunos: { "manha|7°A|2": { nome: "Maria", travado: true } } — valem para todos os meses/anos da turma
+let nomes = {};
+try { nomes = JSON.parse(localStorage.getItem('rf_nomes_v1') || '{}'); } catch (e) { nomes = {}; }
+function salvarNomes() { try { localStorage.setItem('rf_nomes_v1', JSON.stringify(nomes)); } catch (e) {} }
+function chaveNome(aluno) { return `${turnoAtual()}|${document.getElementById('turma').value}|${aluno}`; }
+function nomeAluno(aluno) { const n = nomes[chaveNome(aluno)]; return n && n.nome ? n.nome : `Aluno ${aluno}`; }
+function nomeTravado(aluno) { const n = nomes[chaveNome(aluno)]; return !!(n && n.travado); }
+
+let editandoNome = null; // aluno cujo nome está em edição
+let reTravarAluno = null; // aluno destravado pelo cadeado: se cancelar a edição, o nome volta a ficar travado
+function editarNome(aluno) {
+  if (nomeTravado(aluno)) return;
+  editandoNome = aluno;
+  renderizarChamada();
+  const inp = document.getElementById('inp-nome');
+  if (inp) { inp.focus(); inp.select(); }
+}
+function relogarSeNecessario() {
+  if (reTravarAluno !== null) {
+    const k = chaveNome(reTravarAluno);
+    if (nomes[k]) { nomes[k].travado = true; salvarNomes(); }
+    reTravarAluno = null;
+  }
+}
+function cancelarNome() { relogarSeNecessario(); editandoNome = null; renderizarChamada(); }
+
+// Duplo clique no cadeado: libera o nome para correção
+function destravarNome(aluno) {
+  const k = chaveNome(aluno);
+  if (!nomes[k]) return;
+  nomes[k].travado = false;
+  salvarNomes();
+  reTravarAluno = aluno;
+  editarNome(aluno);
+}
+function salvarNome() {
+  const inp = document.getElementById('inp-nome');
+  const valor = inp ? inp.value.trim() : '';
+  if (valor && editandoNome !== null) {
+    nomes[chaveNome(editandoNome)] = { nome: valor, travado: true }; // salvou = travou
+    salvarNomes();
+    reTravarAluno = null;
+  } else {
+    relogarSeNecessario(); // campo vazio: mantém o nome anterior travado
+  }
+  editandoNome = null;
+  renderizarChamada();
+  renderizarAlertas();
+}
+function nomeKeydown(ev) {
+  if (ev.key === 'Enter') salvarNome();
+  else if (ev.key === 'Escape') cancelarNome();
+}
+
+function carregarTurma(ano, turmaChave, mes, turno) {
+  turno = turno || turnoAtual();
+  // Alunos vêm da turma; dados reais só existem para 2026 (mai-ago); o resto começa vazio e aceita lançamento
   const dadosTurma = CHAMADA_2026[turmaChave] || {};
-  const nomeMesPy = { 'MAIO': 5, 'JUNHO': 6, 'JULHO': 7, 'AGOSTO': 8 }[mes];
+  const mesNum = ORDEM_MESES.indexOf(mes) + 1;
   const resultado = {};
   Object.keys(dadosTurma).forEach(aluno => {
     resultado[aluno] = {};
-    dadosTurma[aluno].forEach(([dataISO, status]) => {
-      const [anoNum, mesNum, dia] = dataISO.split('-').map(Number);
-      if (mesNum === nomeMesPy) resultado[aluno][dia] = status;
+    if (turno === 'manha' && String(ano) === '2026') {
+      dadosTurma[aluno].forEach(([dataISO, status]) => {
+        const [, m, dia] = dataISO.split('-').map(Number);
+        if (m === mesNum) resultado[aluno][dia] = status;
+      });
+    }
+  });
+  const ed = edicoes[chaveEdicao(ano, turno, turmaChave, mesNum)] || {};
+  Object.keys(ed).forEach(aluno => {
+    if (!resultado[aluno]) return;
+    Object.keys(ed[aluno]).forEach(dia => {
+      if (ed[aluno][dia] === '-') delete resultado[aluno][dia];
+      else resultado[aluno][dia] = ed[aluno][dia];
     });
   });
   return resultado;
+}
+
+function mesAnteriorDe(ano, mes) {
+  const idx = ORDEM_MESES.indexOf(mes);
+  if (idx > 0) return { ano: Number(ano), mes: ORDEM_MESES[idx - 1] };
+  return { ano: Number(ano) - 1, mes: 'DEZEMBRO' };
 }
 
 function frequenciaDoMes(dadosAlunoMes) {
@@ -481,39 +581,36 @@ function regerarDados() {
   const ano = document.getElementById('ano').value;
   const turma = document.getElementById('turma').value;
   const mes = document.getElementById('mes').value;
-  const idxMes = ORDEM_MESES.indexOf(mes);
-  const mesAnterior = idxMes > 0 ? ORDEM_MESES[idxMes - 1] : null;
+  const mesNum = ORDEM_MESES.indexOf(mes) + 1;
 
-  const nomesMes = { JANEIRO:'Janeiro', FEVEREIRO:'Fevereiro', MARCO:'Março', ABRIL:'Abril', MAIO: 'Maio', JUNHO: 'Junho', JULHO: 'Julho', AGOSTO: 'Agosto', SETEMBRO:'Setembro', OUTUBRO:'Outubro', NOVEMBRO:'Novembro', DEZEMBRO:'Dezembro' };
-  document.getElementById('titulo-mes').textContent = nomesMes[mes];
+  document.getElementById('titulo-mes').textContent = NOMES_MES[mes];
   document.getElementById('titulo-ano').textContent = ano;
 
-  if (!MESES_COM_DADOS_REAIS.includes(mes)) {
-    // Mês fora do período coberto pelo estudo de caso (maio–agosto de 2026)
-    document.getElementById('tabela-chamada').innerHTML = '';
-    document.getElementById('titulo-turma').textContent =
-      `Turma ${turma.replace('°','º ')} — Manhã. Sem chamada digitalizada para ${nomesMes[mes]}/2026 — o estudo de caso cobre apenas maio a agosto (2º trimestre).`;
-    renderizarAlertasVazio();
-    return;
-  }
-
   chamadaAtual = carregarTurma(ano, turma, mes);
-  diasDoMes = [...new Set(Object.values(chamadaAtual).flatMap(d => Object.keys(d).map(Number)))].sort((a,b) => a-b);
+  diasDoMes = Array.from({ length: diasNoMes(ano, mesNum) }, (_, k) => k + 1); // 1..28/29/30/31
 
   freqMesAnterior = {};
-  if (mesAnterior && MESES_COM_DADOS_REAIS.includes(mesAnterior)) {
-    const dadosAnt = carregarTurma(ano, turma, mesAnterior);
-    Object.keys(dadosAnt).forEach(aluno => {
-      freqMesAnterior[aluno] = frequenciaDoMes(dadosAnt[aluno]);
-    });
-  }
+  const ant = mesAnteriorDe(ano, mes);
+  const dadosAnt = carregarTurma(ant.ano, turma, ant.mes);
+  Object.keys(dadosAnt).forEach(aluno => {
+    freqMesAnterior[aluno] = frequenciaDoMes(dadosAnt[aluno]);
+  });
 
   const serieAtual = document.getElementById('serie').value;
-  const tipoDado = serieAtual === SERIE_FICTICIA
-    ? 'Dados fictícios simulados (não há registro real de 6º ano neste protótipo).'
-    : 'Dados reais.';
+  const turno = turnoAtual();
+  const temBase = turno === 'manha' && String(ano) === '2026' && ['MAIO','JUNHO','JULHO','AGOSTO'].includes(mes);
+  let tipoDado;
+  if (temBase) {
+    tipoDado = serieAtual === SERIE_FICTICIA
+      ? 'Dados fictícios simulados (não há registro real de 6º ano neste protótipo).'
+      : 'Dados reais.';
+  } else {
+    tipoDado = turno === 'tarde'
+      ? 'Turno da tarde — lista de alunos de exemplo (numerada); clique no nome para renomear e travar. Clique nas células para lançar a chamada.'
+      : 'Mês sem registro prévio — clique nas células para lançar a chamada.';
+  }
   document.getElementById('titulo-turma').textContent =
-    `Turma ${turma.replace('°','º ')} — Manhã. ${tipoDado} Clique em uma célula para alternar entre presença (P) e falta (F).`;
+    `Turma ${turma.replace('°','º ')} — ${nomeTurno(turno)}. ${tipoDado} Clique em uma célula para alternar entre vazio, presença (P) e falta (F).`;
 
   renderizarChamada();
   renderizarAlertas();
@@ -522,18 +619,30 @@ function regerarDados() {
 // ---------- Renderizar tabela de chamada ----------
 function renderizarChamada() {
   const tabela = document.getElementById('tabela-chamada');
+  const ano = Number(document.getElementById('ano').value);
+  const mesNum = ORDEM_MESES.indexOf(document.getElementById('mes').value) + 1;
   let html = `<tr><th class="name-col">Aluno</th>`;
-  diasDoMes.forEach(d => html += `<th>${d}</th>`);
+  diasDoMes.forEach(d => {
+    const dow = new Date(ano, mesNum - 1, d).getDay();
+    const we = (dow === 0 || dow === 6) ? ' we' : '';
+    html += `<th class="nome-dia${we}">${d}<span class="dsem">${SIGLA_DIA[dow]}</span></th>`;
+  });
   html += `<th>Freq. %</th></tr>`;
 
   Object.keys(chamadaAtual).sort((a,b) => Number(a)-Number(b)).forEach(aluno => {
-    html += `<tr><td class="name-col">Aluno ${aluno}</td>`;
+    if (editandoNome === aluno) {
+      html += `<tr><td class="name-col editando"><input id="inp-nome" type="text" maxlength="60" value="${esc(nomeAluno(aluno) === 'Aluno ' + aluno ? '' : nomeAluno(aluno))}" placeholder="Nome do aluno" onkeydown="nomeKeydown(event)"><button class="btn-msg" onclick="salvarNome()" title="Salvar e travar o nome">Salvar e travar</button> <button class="btn-msg" onclick="cancelarNome()">Cancelar</button></td>`;
+    } else if (nomeTravado(aluno)) {
+      html += `<tr><td class="name-col travado" ><span class="cadeado" ondblclick="destravarNome('${aluno}')" title="Clique duas vezes no cadeado para liberar o nome para correção">🔒</span> ${esc(nomeAluno(aluno))}</td>`;
+    } else {
+      html += `<tr><td class="name-col editavel" onclick="editarNome('${aluno}')" title="Clique para editar o nome">${esc(nomeAluno(aluno))} ✎</td>`;
+    }
     diasDoMes.forEach(d => {
       const status = chamadaAtual[aluno][d];
       if (status === 'P' || status === 'F') {
         html += `<td class="day-cell ${status}" onclick="alternarDia('${aluno}', ${d})">${status}</td>`;
       } else {
-        html += `<td class="day-cell dash">–</td>`;
+        html += `<td class="day-cell dash" style="cursor:pointer" onclick="alternarDia('${aluno}', ${d})">–</td>`;
       }
     });
     const freq = frequenciaDoMes(chamadaAtual[aluno]);
@@ -543,10 +652,21 @@ function renderizarChamada() {
   tabela.innerHTML = html;
 }
 
+// vazio -> P -> F -> vazio
 function alternarDia(aluno, dia) {
   const atual = chamadaAtual[aluno][dia];
-  if (atual !== 'P' && atual !== 'F') return;
-  chamadaAtual[aluno][dia] = atual === 'P' ? 'F' : 'P';
+  const novo = atual === 'P' ? 'F' : atual === 'F' ? '-' : 'P';
+  if (novo === '-') delete chamadaAtual[aluno][dia]; else chamadaAtual[aluno][dia] = novo;
+
+  const ano = document.getElementById('ano').value;
+  const turma = document.getElementById('turma').value;
+  const mesNum = ORDEM_MESES.indexOf(document.getElementById('mes').value) + 1;
+  const chave = chaveEdicao(ano, turnoAtual(), turma, mesNum);
+  edicoes[chave] = edicoes[chave] || {};
+  edicoes[chave][aluno] = edicoes[chave][aluno] || {};
+  edicoes[chave][aluno][dia] = novo;
+  salvarEdicoes();
+
   renderizarChamada();
   renderizarAlertas();
 }
@@ -599,7 +719,7 @@ function copiarMensagem() {
 function gerarMensagem(aluno, freqMedia, tendencia, faltasSeq, nivel) {
   const turma = document.getElementById('turma').value.replace('°', 'º ');
   const mes = document.getElementById('mes').value;
-  const nomesMes = { MAIO: 'maio', JUNHO: 'junho', JULHO: 'julho', AGOSTO: 'agosto' };
+  const anoSel = document.getElementById('ano').value;
 
   let motivos = [];
   if (freqMedia < 85) motivos.push(`a frequência está em ${freqMedia}% neste mês`);
@@ -612,9 +732,9 @@ function gerarMensagem(aluno, freqMedia, tendencia, faltasSeq, nivel) {
   const texto =
 `Prezado(a) responsável,
 
-Escrevemos da Escola Municipal de Cubatão a respeito do(a) Aluno(a) nº ${aluno}, da turma ${turma}.
+Escrevemos da Escola Municipal de Cubatão a respeito do(a) aluno(a) ${nomeAluno(aluno) === 'Aluno ' + aluno ? 'nº ' + aluno : nomeAluno(aluno)}, da turma ${turma}, turno da ${nomeTurno(turnoAtual()).toLowerCase()}.
 
-${corpoMotivos}, o que classificamos como risco ${nivel.toLowerCase()} de evasão escolar, referente ao mês de ${nomesMes[mes] || mes.toLowerCase()} de 2026.
+${corpoMotivos}, o que classificamos como risco ${nivel.toLowerCase()} de evasão escolar, referente ao mês de ${NOMES_MES[mes].toLowerCase()} de ${anoSel}.
 
 Pedimos a gentileza de comparecer à escola ou entrar em contato com a coordenação pedagógica para conversarmos sobre a situação e, juntos, buscarmos uma solução que garanta a permanência e o bom desempenho do(a) aluno(a).
 
@@ -645,7 +765,7 @@ function renderizarAlertas() {
   const corpo = document.getElementById('tabela-alertas');
   corpo.innerHTML = linhas.map(l => `
     <tr>
-      <td>Aluno ${l.aluno}</td>
+      <td>${esc(nomeAluno(l.aluno))}</td>
       <td>${l.freqMedia}%</td>
       <td>${l.tendencia > 0 ? '+' : ''}${l.tendencia} p.p.</td>
       <td>${l.faltasSeq} dia(s)</td>
@@ -672,6 +792,13 @@ function mudarAba(nome) {
   document.getElementById('panel-' + nome).classList.add('active');
 }
 
+(function definirMesAnoAtuais() {
+  const hoje = new Date();
+  const a = String(hoje.getFullYear());
+  const anoSel = document.getElementById('ano');
+  anoSel.value = [...anoSel.options].some(o => o.value === a) ? a : '2026';
+  document.getElementById('mes').value = ORDEM_MESES[hoje.getMonth()];
+})();
 popularTurmasDaSerie();
 atualizarOpcoesEscola();
 atualizarContexto();
